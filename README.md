@@ -42,6 +42,9 @@ AI Gateway provides a unified interface for routing requests to multiple AI prov
      }'
    ```
 
+> **Personal note:** I've been using `llama3.2` instead of `llama3` locally — update the model name above
+> if you're running a newer Ollama version. Run `ollama list` to see what you have pulled.
+
 ### Building from Source
 
 ```bash
