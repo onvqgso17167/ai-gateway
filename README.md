@@ -46,6 +46,7 @@ AI Gateway provides a unified interface for routing requests to multiple AI prov
 > **Personal note:** I'm running `llama3.2` locally — updated the model name above to match.
 > Run `ollama list` to see what you have pulled and adjust accordingly.
 > I also have `mistral` pulled as a fallback: `ollama pull mistral`
+> Tip: `ollama pull llama3.2:1b` is a much lighter download (~1GB) if you're on a constrained machine.
 
 ### Building from Source
 
