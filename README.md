@@ -17,6 +17,7 @@ AI Gateway provides a unified interface for routing requests to multiple AI prov
 - Go 1.22+
 - Envoy proxy (see `.envoy-version` for the required version)
 - Docker & Docker Compose (for local development)
+- [Ollama](https://ollama.com/) (for local LLM inference)
 
 ## Getting Started
 
@@ -44,6 +45,7 @@ AI Gateway provides a unified interface for routing requests to multiple AI prov
 
 > **Personal note:** I'm running `llama3.2` locally — updated the model name above to match.
 > Run `ollama list` to see what you have pulled and adjust accordingly.
+> I also have `mistral` pulled as a fallback: `ollama pull mistral`
 
 ### Building from Source
 
