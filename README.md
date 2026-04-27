@@ -37,13 +37,13 @@ AI Gateway provides a unified interface for routing requests to multiple AI prov
    curl -X POST http://localhost:10000/v1/chat/completions \
      -H 'Content-Type: application/json' \
      -d '{
-       "model": "llama3",
+       "model": "llama3.2",
        "messages": [{"role": "user", "content": "Hello!"}]
      }'
    ```
 
-> **Personal note:** I've been using `llama3.2` instead of `llama3` locally — update the model name above
-> if you're running a newer Ollama version. Run `ollama list` to see what you have pulled.
+> **Personal note:** I'm running `llama3.2` locally — updated the model name above to match.
+> Run `ollama list` to see what you have pulled and adjust accordingly.
 
 ### Building from Source
 
