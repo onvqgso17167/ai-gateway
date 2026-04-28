@@ -62,6 +62,11 @@ go build ./...
 go test ./...
 ```
 
+> **Note:** Integration tests require a running Envoy instance and may be slow. To run only unit tests:
+> ```bash
+> go test $(go list ./... | grep -v /tests/integration)
+> ```
+
 ## Configuration
 
 AI Gateway is configured via Envoy's xDS API or static configuration files. See the `examples/` directory for sample configurations.
