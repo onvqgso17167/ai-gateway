@@ -103,6 +103,9 @@ docker compose logs -f ai-gateway
 # Check which Ollama models are available locally
 ollama list
 
-# Restart just the gateway container after a config change (faster than full compose down/up)
+# Restart just the gateway container after config changes (faster than full `down && up`)
 docker compose restart ai-gateway
+
+# Watch live token-usage log lines only
+docker compose logs -f ai-gateway | grep 'token'
 ```
