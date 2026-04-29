@@ -103,9 +103,9 @@ docker compose logs -f ai-gateway
 # Check which Ollama models are available locally
 ollama list
 
-# Restart just the gateway container after config changes (faster than full `down && up`)
+# Restart just the gateway container without bringing the whole stack down
 docker compose restart ai-gateway
 
-# Watch live token-usage log lines only
-docker compose logs -f ai-gateway | grep 'token'
+# Quick health check against the gateway
+curl -s http://localhost:10000/healthz
 ```
