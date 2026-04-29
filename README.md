@@ -92,6 +92,24 @@ Client → Envoy Proxy → AI Gateway Filter → LLM Provider
                             └── Response normalization
 ```
 
+## Useful Commands
+
+> **Personal cheatsheet** — commands I find myself running repeatedly:
+
+```bash
+# Tail gateway logs while sending requests
+docker compose logs -f ai-gateway
+
+# Check which Ollama models are available locally
+ollama list
+
+# Quick smoke test against the local stack
+curl -s http://localhost:10000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"llama3.2:1b","messages":[{"role":"user","content":"ping"}]}' \
+  | jq '.choices[0].message.content'
+```
+
 ## Contributing
 
 Please read [CONTRIBUTING.md](CONTRIBUTING.md) before submitting pull requests.
@@ -100,4 +118,4 @@ For bug reports and feature requests, use the [GitHub Issues](../../issues) temp
 
 ## License
 
-Apache 2.0 — see [LICENSE](LICENSE) for details.
+Apache 2.0 — see [LICENSE](LICENSE) 
