@@ -103,9 +103,6 @@ docker compose logs -f ai-gateway
 # Check which Ollama models are available locally
 ollama list
 
-# Restart just the gateway container without bringing the whole stack down
+# Restart just the gateway container (e.g. after editing envoy.yaml) without tearing down the whole stack
 docker compose restart ai-gateway
-
-# Quick health check against the gateway
-curl -s http://localhost:10000/healthz
 ```
