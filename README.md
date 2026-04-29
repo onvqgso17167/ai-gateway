@@ -103,12 +103,6 @@ docker compose logs -f ai-gateway
 # Check which Ollama models are available locally
 ollama list
 
-# Restart just the gateway container without bringing the whole stack down
+# Restart just the gateway container after a config change (faster than full compose down/up)
 docker compose restart ai-gateway
-
-# Quick smoke test against the local stack
-curl -s http://localhost:10000/v1/chat/completions \
-  -H 'Content-Type: application/json' \
-  -d '{"model": "llama3.2:1b", "messages": [{"role": "user", "content": "ping"}]}' \
-  | jq '.choices[0].message.content'
 ```
