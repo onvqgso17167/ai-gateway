@@ -103,9 +103,12 @@ docker compose logs -f ai-gateway
 # Check which Ollama models are available locally
 ollama list
 
-# Quick chat alias — usage: chat "Why is the sky blue?"
-alias chat='f(){ curl -s -X POST http://localhost:10000/v1/chat/completions -H "Content-Type: application/json" -d "{\"model\":\"llama3.2\",\"messages\":[{\"role\":\"user\",\"content\":\"$1\"}]}" | jq -r ".choices[0].message.content"; }; f'
-
-# Restart just the gateway container without bringing down Ollama
+# Restart just the gateway container without bringing the whole stack down
 docker compose restart ai-gateway
+
+# Quick smoke test against the local stack
+curl -s http://localhost:10000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model": "llama3.2:1b", "messages": [{"role": "user", "content": "ping"}]}' \
+  | jq '.choices[0].message.content'
 ```
