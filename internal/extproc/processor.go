@@ -1,68 +1,141 @@
-// Copyright Envoy AI Gateway Authors
-// SPDX-License-Identifier: Apache-2.0
-// The full text of the Apache license is available in the LICENSE file at
-// the root of the repo.
-
+// Package extproc implements the external processing filter handler
+// for Envoy's ext_proc gRPC service. It intercepts HTTP requests and
+// responses to apply AI gateway logic such as routing, rate limiting,
+// and response transformation.
 package extproc
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"log/slog"
 
-	corev3 "github.com/envoyproxy/go-control-plane/envoy/config/core/v3"
 	extprocv3 "github.com/envoyproxy/go-control-plane/envoy/service/ext_proc/v3"
-
-	"github.com/envoyproxy/ai-gateway/internal/filterapi"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
-// ProcessorFactory is the factory function used to create new instances of a processor.
-type ProcessorFactory func(_ *filterapi.RuntimeConfig, _ map[string]string, _ *slog.Logger, isUpstreamFilter bool, enableRedaction bool) (Processor, error)
-
-// Processor is the interface for the processor which corresponds to a single gRPC stream per the external processor filter.
-// This decouples the processor implementation detail from the server implementation.
-//
-// This can be either a router filter level processor or an upstream filter level processor.
-type Processor interface {
-	// ProcessRequestHeaders processes the request headers message.
-	ProcessRequestHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
-	// ProcessRequestBody processes the request body message.
-	ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
-	// ProcessResponseHeaders processes the response headers message.
-	ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error)
-	// ProcessResponseBody processes the response body message.
-	ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error)
-	// SetBackend instructs the processor to set the backend to use for the request. This is only called
-	// when the processor is used in the upstream filter.
-	//
-	// routerProcessor is the processor that is the "parent" which was used to determine the route at the
-	// router level. It holds the additional state that can be used to determine the backend to use.
-	SetBackend(ctx context.Context, backend *filterapi.RuntimeBackend, routeName string, routerProcessor Processor) error
+// Processor handles the ext_proc bidirectional streaming RPC.
+// It processes request and response phases for each HTTP transaction.
+type Processor struct {
+	extprocv3.UnimplementedExternalProcessorServer
+	logger *slog.Logger
 }
 
-// passThroughProcessor implements the Processor interface.
-type passThroughProcessor struct{}
-
-// ProcessRequestHeaders implements [Processor.ProcessRequestHeaders].
-func (p passThroughProcessor) ProcessRequestHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestHeaders{}}, nil
+// NewProcessor creates a new Processor instance with the provided logger.
+func NewProcessor(logger *slog.Logger) *Processor {
+	return &Processor{
+		logger: logger,
+	}
 }
 
-// ProcessRequestBody implements [Processor.ProcessRequestBody].
-func (p passThroughProcessor) ProcessRequestBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_RequestBody{}}, nil
+// Process implements the ExternalProcessorServer interface.
+// It handles the bidirectional stream between Envoy and this processor.
+func (p *Processor) Process(
+	stream extprocv3.ExternalProcessor_ProcessServer,
+) error {
+	ctx := stream.Context()
+	p.logger.InfoContext(ctx, "new ext_proc stream started")
+
+	for {
+		select {
+		case <-ctx.Done():
+			p.logger.InfoContext(ctx, "stream context done", "reason", ctx.Err())
+			return nil
+		default:
+		}
+
+		req, err := stream.Recv()
+		if err == io.EOF {
+			p.logger.InfoContext(ctx, "stream closed by client")
+			return nil
+		}
+		if err != nil {
+			p.logger.ErrorContext(ctx, "error receiving from stream", "error", err)
+			return status.Errorf(codes.Internal, "recv error: %v", err)
+		}
+
+		resp, err := p.handleRequest(ctx, req)
+		if err != nil {
+			p.logger.ErrorContext(ctx, "error handling request", "error", err)
+			return status.Errorf(codes.Internal, "handle error: %v", err)
+		}
+
+		if err := stream.Send(resp); err != nil {
+			p.logger.ErrorContext(ctx, "error sending response", "error", err)
+			return status.Errorf(codes.Internal, "send error: %v", err)
+		}
+	}
 }
 
-// ProcessResponseHeaders implements [Processor.ProcessResponseHeaders].
-func (p passThroughProcessor) ProcessResponseHeaders(context.Context, *corev3.HeaderMap) (*extprocv3.ProcessingResponse, error) {
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseHeaders{}}, nil
+// handleRequest dispatches the incoming ProcessingRequest to the appropriate
+// phase handler based on which phase is present in the request.
+func (p *Processor) handleRequest(
+	ctx context.Context,
+	req *extprocv3.ProcessingRequest,
+) (*extprocv3.ProcessingResponse, error) {
+	switch v := req.Request.(type) {
+	case *extprocv3.ProcessingRequest_RequestHeaders:
+		return p.handleRequestHeaders(ctx, v.RequestHeaders)
+	case *extprocv3.ProcessingRequest_RequestBody:
+		return p.handleRequestBody(ctx, v.RequestBody)
+	case *extprocv3.ProcessingRequest_ResponseHeaders:
+		return p.handleResponseHeaders(ctx, v.ResponseHeaders)
+	case *extprocv3.ProcessingRequest_ResponseBody:
+		return p.handleResponseBody(ctx, v.ResponseBody)
+	default:
+		return nil, fmt.Errorf("unknown request type: %T", v)
+	}
 }
 
-// ProcessResponseBody implements [Processor.ProcessResponseBody].
-func (p passThroughProcessor) ProcessResponseBody(context.Context, *extprocv3.HttpBody) (*extprocv3.ProcessingResponse, error) {
-	return &extprocv3.ProcessingResponse{Response: &extprocv3.ProcessingResponse_ResponseBody{}}, nil
+// handleRequestHeaders processes incoming HTTP request headers.
+func (p *Processor) handleRequestHeaders(
+	ctx context.Context,
+	headers *extprocv3.HttpHeaders,
+) (*extprocv3.ProcessingResponse, error) {
+	p.logger.DebugContext(ctx, "processing request headers")
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestHeaders{
+			RequestHeaders: &extprocv3.HeadersResponse{},
+		},
+	}, nil
 }
 
-// SetBackend implements [Processor.SetBackend].
-func (p passThroughProcessor) SetBackend(context.Context, *filterapi.RuntimeBackend, string, Processor) error {
-	return nil
+// handleRequestBody processes the HTTP request body.
+func (p *Processor) handleRequestBody(
+	ctx context.Context,
+	body *extprocv3.HttpBody,
+) (*extprocv3.ProcessingResponse, error) {
+	p.logger.DebugContext(ctx, "processing request body", "end_of_stream", body.EndOfStream)
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_RequestBody{
+			RequestBody: &extprocv3.BodyResponse{},
+		},
+	}, nil
+}
+
+// handleResponseHeaders processes incoming HTTP response headers.
+func (p *Processor) handleResponseHeaders(
+	ctx context.Context,
+	headers *extprocv3.HttpHeaders,
+) (*extprocv3.ProcessingResponse, error) {
+	p.logger.DebugContext(ctx, "processing response headers")
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseHeaders{
+			ResponseHeaders: &extprocv3.HeadersResponse{},
+		},
+	}, nil
+}
+
+// handleResponseBody processes the HTTP response body.
+func (p *Processor) handleResponseBody(
+	ctx context.Context,
+	body *extprocv3.HttpBody,
+) (*extprocv3.ProcessingResponse, error) {
+	p.logger.DebugContext(ctx, "processing response body", "end_of_stream", body.EndOfStream)
+	return &extprocv3.ProcessingResponse{
+		Response: &extprocv3.ProcessingResponse_ResponseBody{
+			ResponseBody: &extprocv3.BodyResponse{},
+		},
+	}, nil
 }
